@@ -31,7 +31,7 @@ ConfigManager configManager;
 
 const char *ssid = config.name;
 const char *password = config.password;
-const char *mqtt_server = "broker.hivemq.com";
+const char *mqtt_server = config.mqtt_server;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -117,17 +117,13 @@ void setup()
   configManager.addParameter("hour", &config.hour);
   configManager.addParameter("password", config.password, 20, set);
   configManager.addParameter("version", &meta.version, get);
+  configManager.addParameter("broker", config.mqtt_server, 20);
 
   configManager.setAPCallback(createCustomRoute);
   configManager.setAPICallback(createCustomRoute);
 
   configManager.begin(config);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
@@ -136,35 +132,41 @@ void setup()
 void loop()
 {
   configManager.loop();
-
-  if (!client.connected())
-  {
-    reconnect();
-  }
-  client.loop();
+  // Serial.println(config.mqtt_server);
 
   if (digitalRead(RESET_BUTTON))
   {
-    EEPROM.put(0, "  ");
-    EEPROM.commit();
+    EEPROM.get(0, msg);
 
-    ESP.restart();
+    if (0 != memcmp(msg, "re", 2)) {
+      EEPROM.put(0, "re");
+      EEPROM.commit();
+
+      ESP.restart();
+    }
   }
 
-  long now = millis();
-  if (now - lastMsg > 2000)
+  if (WiFi.status() == WL_CONNECTED)
   {
-    lastMsg = now;
+    if (!client.connected())
+    {
+      reconnect();
+    }
+    client.loop();
 
-    float temperature = getTemp(); //will take about 750ms to run
-    Serial.println(temperature);
-    snprintf(msg, sizeof(msg), "%3.2f", temperature);
-    Serial.print("Publish temperature: ");
-    Serial.println(msg);
-    client.publish("outTopic", msg);
+    long now = millis();
+    if (now - lastMsg > 2000)
+    {
+      lastMsg = now;
+
+      float temperature = getTemp(); //will take about 750ms to run
+      Serial.println(temperature);
+      snprintf(msg, sizeof(msg), "%3.2f", temperature);
+      Serial.print("Publish temperature: ");
+      Serial.println(msg);
+      client.publish("outTopic", msg);
+    }
   }
-
-  // Add your loop code here
 }
 
 float getTemp()
